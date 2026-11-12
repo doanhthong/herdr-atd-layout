@@ -372,13 +372,13 @@ export default class Agents extends View {
               this.folded.has(a.address) ? this.folded.delete(a.address) : this.folded.add(a.address);
               cx.notify();
             })).child(pic)))
-          .child(div().flex_shrink(0).max_w(150).truncate().text_size(12.5).font_semibold().text_color(idle ? t.muted : t.foreground).child(a.space_name || "\u2014"))
+          .child(div().flex_shrink(0).max_w(150).truncate().text_size(12.5).font_semibold().text_color(t.dim).child(a.space_name || "\u2014"))
           .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(meta))
           .when(subs.length > 0, el => el.child(fold(a, subs)))
           .when(this.hovered === a.address, el => el.child(pin))
           .when(this.hovered !== a.address && Boolean(when), el => el.child(div().flex_none().text_size(11).text_color(t.dim).child(duration(now - when))))
           .child(this.status(t, a, false)))
-        .child(div().truncate().text_size(12).text_color(idle ? t.dim : t.muted).child(line2 || ""));
+        .child(div().truncate().text_size(12).text_color(idle ? t.muted : t.foreground).child(line2 || ""));
     };
 
     // Groups in list order: spaces (grouped) or priority sections. Agents of a
