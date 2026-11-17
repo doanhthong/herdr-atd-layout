@@ -11,14 +11,40 @@ A Herdr layout (`atd`) based on the shipped `main` layout:
 - **Agents** (`mods/atd-agents`): the shipped agents list (priority / grouped), each agent on two lines:
   1. project (space) · branch · machine · named tab, time, status
   2. title (the agent's own terminal title, else the tab's name)
+- **Tab bar** (`mods/atd-tabs`): the shipped `tabs` mod (cloned from 0.1.16) with a **Sessions**
+  button after Files and Changes.
+- **Agent sessions** (`mods/agent-session`): a dialog listing past coding-agent sessions, newest
+  first, with the transcript beside the list. Type to filter, ↑/↓ to pick, Enter (or Resume)
+  reopens the session in a new tab in its folder. Also in the command palette as "Agent Sessions".
+  Today it reads Claude Code sessions from `~/.claude`, every `~/.claude-*` folder and
+  `$CLAUDE_CONFIG_DIR`. It runs `python3` and reads those transcripts; it keeps a cache in
+  `~/.cache/herdr-agent-session/`. To add environment variables when resuming from a config
+  folder, write `~/.config/herdr-app/agent-session.json`:
+
+  ```json
+  { "claude": { "env": { "~/.claude-work": { "ENABLE_CLAUDEAI_MCP_SERVERS": "false" } } } }
+  ```
+
+## Needs
+
+- [`convo-reader`](https://github.com/doanhthong/herdr-atd-convo-readmode) for the docked Read
+  Mode block (`readmode`, hidden by default). Without it, delete that block from the layout.
+- `gitview` (optional) for the Changes panel. Without it, set the `changes` block's content to
+  `{ "mod": "changes" }` to use Herdr's own.
+- `python3` for `agent-session`.
 
 ## Install
 
 ```sh
+git clone https://github.com/doanhthong/herdr-atd-layout ~/git-projects/herdr-atd-layout
 ln -sfn ~/git-projects/herdr-atd-layout/layouts/atd.json ~/.config/herdr-app/layouts/atd.json
 ln -sfn ~/git-projects/herdr-atd-layout/mods/atd-spaces ~/.config/herdr-app/mods/atd-spaces
 ln -sfn ~/git-projects/herdr-atd-layout/mods/atd-agents ~/.config/herdr-app/mods/atd-agents
+ln -sfn ~/git-projects/herdr-atd-layout/mods/atd-tabs ~/.config/herdr-app/mods/atd-tabs
+ln -sfn ~/git-projects/herdr-atd-layout/mods/agent-session ~/.config/herdr-app/mods/agent-session
 herdr-app do layout.switch --name atd
 ```
 
 `ctrl-shift-l` cycles layouts back to `main`.
+
+See [RECIPE.md](RECIPE.md) for the full brief. MIT licensed.
