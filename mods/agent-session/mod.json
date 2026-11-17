@@ -1,0 +1,11 @@
+{
+  "place": "none",
+  "title": "Agent Sessions",
+  "overlay": { "kind": "dialog", "width": 0.9, "height": 0.88 },
+  "palette": [
+    {
+      "label": "Agent Sessions",
+      "about": "Browse, read and resume past agent sessions (Claude Code today)"
+    }
+  ]
+}

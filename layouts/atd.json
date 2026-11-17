@@ -93,7 +93,7 @@
           },
           "window_drag": true,
           "content": {
-            "mod": "tabs"
+            "mod": "atd-tabs"
           }
         },
         {
@@ -103,33 +103,56 @@
           "gap": 8,
           "children": [
             {
-              "id": "main",
-              "type": "block",
-              "content": {
-                "tab": "active",
-                "pane": {
-                  "gap": 8,
-                  "radius": 10,
-                  "background": "background",
-                  "lone": true,
-                  "border": {
-                    "width": 1,
-                    "color": "border"
+              "id": "main-row",
+              "type": "row",
+              "gap": 8,
+              "children": [
+                {
+                  "id": "main",
+                  "type": "block",
+                  "content": {
+                    "tab": "active",
+                    "pane": {
+                      "gap": 8,
+                      "radius": 10,
+                      "background": "background",
+                      "lone": true,
+                      "border": {
+                        "width": 1,
+                        "color": "border"
+                      },
+                      "focus": {
+                        "width": 1,
+                        "color": "accent"
+                      },
+                      "header": {
+                        "content": {
+                          "mod": "pane"
+                        },
+                        "height": 30,
+                        "position": "top",
+                        "reveal": "always"
+                      }
+                    }
+                  }
+                },
+                {
+                  "id": "readmode",
+                  "type": "block",
+                  "hidden": true,
+                  "size": {
+                    "px": 520
                   },
-                  "focus": {
-                    "width": 1,
-                    "color": "accent"
-                  },
-                  "header": {
-                    "content": {
-                      "mod": "pane"
-                    },
-                    "height": 30,
-                    "position": "top",
-                    "reveal": "always"
+                  "min": 360,
+                  "max": 1000,
+                  "content": {
+                    "mod": "convo-reader",
+                    "props": {
+                      "docked": true
+                    }
                   }
                 }
-              }
+              ]
             },
             {
               "id": "panel",
@@ -157,7 +180,12 @@
                       "id": "changes",
                       "type": "block",
                       "content": {
-                        "mod": "changes"
+                        "mod": "gitview",
+                        "props": {
+                          "replaces": {
+                            "mod": "changes"
+                          }
+                        }
                       }
                     }
                   ]
