@@ -6,7 +6,7 @@
 
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
-import { spaces, panes, run, openOverlay, closeOverlay, props, theme, shared, setShared, settings } from "herdr";
+import { spaces, machines, panes, run, openOverlay, closeOverlay, props, theme, shared, setShared, settings } from "herdr";
 
 const MARK = { ansi6: "#22a99a", ansi3: "#e3814f", ansi4: "#5b8def", ansi5: "#8b7cf6", ansi2: "#3fae6a", ansi1: "#d9649a" };
 const PALETTE = ["ansi6", "ansi3", "ansi4", "ansi5", "ansi2", "ansi1"];
@@ -54,18 +54,28 @@ function ordered() {
   const rows = sp.map((s) => {
     const at = place(s);
     const m = at.match(/\/\.herdr\/worktrees\/([^/]+)\//);
-    return { s, at, wtRepo: m ? m[1] : null, repo: base(at) };
+    return { s, at, wtRepo: m ? m[1] : null, repo: base(at), on: s.machine ?? null };
   });
   const out = [];
   const used = new Set();
   for (const r of rows) {
-    if (r.wtRepo && rows.some((o) => !o.wtRepo && o.repo === r.wtRepo)) continue;
+    if (r.wtRepo && rows.some((o) => !o.wtRepo && o.on === r.on && o.repo === r.wtRepo)) continue;
     out.push({ ...r, tree: false });
     if (r.wtRepo) continue;
-    for (const k of rows) if (k.wtRepo === r.repo && !used.has(k.s.id)) { used.add(k.s.id); out.push({ ...k, tree: true }); }
+    for (const k of rows) if (k.on === r.on && k.wtRepo === r.repo && !used.has(k.s.id)) { used.add(k.s.id); out.push({ ...k, tree: true }); }
   }
   return out;
 }
+
+// Machines to list: this computer first, then every other machine that has a
+// layout on this connection or a space. Headers only show once there's more than one.
+function machineNames() {
+  const remote = new Set(spaces().map((s) => s.machine).filter(Boolean));
+  for (const m of machines()) if (m.name) remote.add(m.name);
+  return [null, ...[...remote].sort()];
+}
+const machineState = (m) => (m ? machines().find((k) => k.name === m)?.layout ?? "unavailable" : "ready");
+const machineLabel = (m) => m ?? "This computer";
 
 function glyph(t, st) {
   if (st === "working") return svg("mods/workspace-chrome/spinner.svg").size(12).flex_none().text_color(t.working).spin(900);
@@ -78,6 +88,7 @@ function glyph(t, st) {
 export default class AtdSpaces extends View {
   init(_props, cx) {
     if (!isDropdown()) return;
+    try { this.folded = new Set(JSON.parse(localStorage.getItem("atd-spaces.folded") ?? "[]")); } catch { this.folded = new Set(); }
     this.filter = "";
     this.at = null;
     this.handle = cx.focus_handle();
@@ -102,7 +113,7 @@ export default class AtdSpaces extends View {
     // Other spaces that want you: shown as a badge on the button.
     const others = sp.filter((s) => !s.active && (s.status === "blocked" || s.status === "done"));
     const worst = others.reduce((m, s) => ((RANK[s.status] ?? 0) > (RANK[m] ?? 0) ? s.status : m), null);
-    const sub = [cur?.branch && !["main", "master"].includes(cur.branch) ? cur.branch : null, cur ? `${cur.tabs.length} tab${cur.tabs.length === 1 ? "" : "s"}` : null].filter(Boolean).join(" · ");
+    const sub = [cur?.machine, cur?.branch && !["main", "master"].includes(cur.branch) ? cur.branch : null, cur ? `${cur.tabs.length} tab${cur.tabs.length === 1 ? "" : "s"}` : null].filter(Boolean).join(" · ");
     return h_flex().size_full().bg(t.chrome).px(8).py(6).gap(6).items_center()
       .child(h_flex().id("atd-space-button").flex_1().min_w(0).h_full().px(8).gap(9).items_center().rounded(8)
         .border_1().border_color(t.border).bg(t.surface).cursor_pointer()
@@ -123,18 +134,37 @@ export default class AtdSpaces extends View {
   // ---------- the dropdown ----------
   close() { closeOverlay(props().overlay); }
 
+  // Rows in order: per machine, a header (not selectable) then its spaces; then actions.
   items() {
     const f = this.filter.toLowerCase();
     const cur = spaces().find((s) => s.active);
-    const list = ordered().filter((r) => !f || `${r.s.name} ${r.s.branch ?? ""} ${r.at}`.toLowerCase().includes(f));
+    const names = machineNames();
+    const multi = names.length > 1;
+    const all = ordered();
+    const list = [];
+    for (const m of names) {
+      const mine = all.filter((r) => r.on === m);
+      const hits = mine.filter((r) => !f || `${r.s.name} ${r.s.branch ?? ""} ${r.at} ${m ?? ""}`.toLowerCase().includes(f));
+      if (!multi) { list.push(...hits.map((r) => ({ kind: "space", ...r }))); continue; }
+      if (f && !hits.length) continue;
+      list.push({ kind: "head", id: `m-${m ?? "local"}`, m, count: mine.length });
+      if (this.folded.has(m) && !f) continue;
+      list.push(...hits.map((r) => ({ kind: "space", ...r })));
+      if (!mine.length) {
+        const st = machineState(m);
+        if (st === "ready") list.push({ kind: "act", id: `new-on-${m ?? "local"}`, icon: "plus", label: "New space there", sub: true, go: () => run("space.new", { machine: m ?? "" }) });
+        else list.push({ kind: "note", id: `note-${m}`, label: st === "loading" ? "Loading…" : "Not connected" });
+      }
+    }
+    const here = cur?.machine ?? null;
     const acts = [
-      { kind: "act", id: "new-space", icon: "plus", label: "New space", go: () => run("space.new") },
+      { kind: "act", id: "new-space", icon: "plus", label: multi ? `New space on ${machineLabel(here)}` : "New space", go: () => run("space.new", { machine: here ?? "" }) },
       ...(cur ? [
         { kind: "act", id: "new-wt", icon: "branch", label: `New worktree from ${cur.name}…`, go: () => this.worktree(cur, "new") },
         { kind: "act", id: "open-wt", icon: "branch", label: "Open worktree…", go: () => this.worktree(cur, "open") },
       ] : []),
     ].filter((a) => !f || a.label.toLowerCase().includes(f));
-    return [...list.map((r) => ({ kind: "space", ...r })), ...acts];
+    return [...list, ...acts];
   }
 
   worktree(s, action) {
@@ -144,23 +174,38 @@ export default class AtdSpaces extends View {
   }
 
   go(it) {
-    if (!it) return;
+    if (!it || it.kind === "head" || it.kind === "note") return;
     this.close();
     if (it.kind === "space") run("space.select", { id: it.s.id });
     else it.go();
   }
 
+  toggle(m) {
+    this.folded.has(m) ? this.folded.delete(m) : this.folded.add(m);
+    try { localStorage.setItem("atd-spaces.folded", JSON.stringify([...this.folded])); } catch {}
+  }
+
   dropdown(t) {
     const kept = colors();
     const items = this.items();
+    const pickable = (i) => items[i] && items[i].kind !== "head" && items[i].kind !== "note";
+    // Move the highlight by `dir`, skipping machine headers and notes.
+    const step = (from, dir) => {
+      for (let n = 1; n <= items.length; n++) {
+        const i = (((from + dir * n) % items.length) + items.length) % items.length;
+        if (pickable(i)) return i;
+      }
+      return from;
+    };
     if (this.at === null) this.at = Math.max(0, items.findIndex((i) => i.kind === "space" && i.s.active));
     this.at = Math.max(0, Math.min(this.at, items.length - 1));
-    const firstAct = items.findIndex((i) => i.kind === "act");
+    if (!pickable(this.at)) this.at = step(this.at, 1);
+    const firstAct = items.findIndex((i) => i.kind === "act" && !i.sub);
 
     const spaceRow = (it, i) => {
       const s = it.s;
       const on = i === this.at;
-      const tail = [s.branch && s.branch !== s.name && !["main", "master"].includes(s.branch) ? s.branch : null, s.machine].filter(Boolean).join(" · ");
+      const tail = [s.branch && s.branch !== s.name && !["main", "master"].includes(s.branch) ? s.branch : null, items.some((x) => x.kind === "head") ? null : s.machine].filter(Boolean).join(" · ");
       return h_flex().id(`dd-${s.id}`).mx(4).h(34).flex_none().px(8).gap(9).items_center().rounded(7).cursor_pointer()
         .when(on, (el) => el.bg(t.hover))
         .when(s.active, (el) => el.bg(t.selected))
@@ -172,13 +217,33 @@ export default class AtdSpaces extends View {
         .when(!it.tree, (el) => el.child(avatar(t, s, kept, 18)))
         .child(div().flex_shrink(0).max_w(150).truncate().text_color(t.foreground).when(s.active, (d) => d.font_semibold()).child(s.name))
         .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(tail))
-        .when(on && !s.machine, (el) => el.child(div().id(`dd-wt-${s.id}`).flex_none().p(3).rounded(4).text_color(t.dim)
+        .when(on, (el) => el.child(div().id(`dd-wt-${s.id}`).flex_none().p(3).rounded(4).text_color(t.dim)
           .hover((x) => x.bg(t.raised).text_color(t.foreground)).tooltip("New worktree from this space")
           .on_click((_e, cx) => { cx.stop_propagation(); this.close(); this.worktree(s, "new"); })
           .child(svg("mods/workspace-chrome/plus.svg").size(12))))
         .child(glyph(t, s.status));
     };
+    const headRow = (it) => {
+      const m = it.m;
+      const st = machineState(m);
+      const folded = this.folded.has(m) && !this.filter;
+      return h_flex().id(`dd-${it.id}`).mx(4).h(26).flex_none().px(8).gap(7).items_center().rounded(6).text_size(11).text_color(t.dim)
+        .cursor_pointer().hover((x) => x.bg(t.hover))
+        .on_click((_e, cx) => { this.toggle(m); cx.notify(); })
+        .child(svg(`mods/workspace-chrome/${m ? "server" : "monitor"}.svg`).size(13).flex_none())
+        .child(div().flex_1().min_w(0).truncate().child(machineLabel(m)))
+        .when(st !== "ready", (el) => el.child(div().flex_none().child(st === "loading" ? "loading" : "offline")))
+        .when(folded && it.count > 0, (el) => el.child(div().flex_none().child(String(it.count))))
+        .when(st === "ready", (el) => el.child(div().id(`dd-new-${it.id}`).flex_none().p(3).rounded(4)
+          .hover((x) => x.bg(t.raised).text_color(t.foreground)).tooltip(`New space on ${machineLabel(m)}`)
+          .on_click((_e, cx) => { cx.stop_propagation(); this.close(); run("space.new", { machine: m ?? "" }); })
+          .child(svg("mods/workspace-chrome/plus.svg").size(11))))
+        .child(div().size(6).rounded(3).flex_none().bg(st === "ready" ? t.ansi2 : t.dim))
+        .child(svg(`mods/workspace-chrome/chevron-${folded ? "right" : "down"}.svg`).size(11).flex_none());
+    };
+    const noteRow = (it) => div().mx(4).h(28).flex_none().pl(34).flex().items_center().text_size(12).text_color(t.dim).child(it.label);
     const actRow = (it, i) => h_flex().id(`dd-${it.id}`).mx(4).h(32).flex_none().px(8).gap(9).items_center().rounded(7).cursor_pointer()
+      .when(Boolean(it.sub), (el) => el.pl(34).h(28).text_size(12))
       .text_color(t.muted).when(i === this.at, (el) => el.bg(t.hover)).hover((x) => x.bg(t.hover).text_color(t.foreground))
       .on_hover((h, cx) => { if (h && this.at !== i) { this.at = i; cx.notify(); } })
       .on_click(() => this.go(it))
@@ -187,20 +252,22 @@ export default class AtdSpaces extends View {
 
     const rows = [];
     let listH = 0;
-    items.forEach((it) => { listH += it.kind === "space" ? 34 : 32; });
+    const H = (it) => (it.kind === "space" ? 34 : it.kind === "head" ? 26 : it.kind === "note" || it.sub ? 28 : 32);
+    items.forEach((it, i) => { listH += H(it) + (it.kind === "head" && i > 0 ? 4 : 0); });
     if (firstAct > 0) listH += 11;
     listH = Math.min(listH, 440);
     items.forEach((it, i) => {
       if (i === firstAct) rows.push(div().mx(10).my(5).h(1).flex_none().bg(t.border));
-      rows.push(it.kind === "space" ? spaceRow(it, i) : actRow(it, i));
+      if (it.kind === "head" && i > 0) rows.push(div().h(4).flex_none());
+      rows.push(it.kind === "space" ? spaceRow(it, i) : it.kind === "head" ? headRow(it) : it.kind === "note" ? noteRow(it) : actRow(it, i));
     });
 
     return v_flex().id("atd-dropdown").track_focus(this.handle).w_full().bg(t.popover).text_size(13).py(6)
       .on_key_down((e, cx) => {
         const k = e.key;
         if (k === "escape") return this.close();
-        if (k === "down") this.at = (this.at + 1) % items.length;
-        else if (k === "up") this.at = (this.at + items.length - 1) % items.length;
+        if (k === "down") this.at = step(this.at, 1);
+        else if (k === "up") this.at = step(this.at, -1);
         else return;
         cx.stop_propagation();
         cx.notify();
