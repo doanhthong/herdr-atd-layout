@@ -29,8 +29,10 @@ A Herdr layout (`atd`) based on the shipped `main` layout:
 
 - [`convo-reader`](https://github.com/doanhthong/herdr-atd-convo-readmode) for the docked Read
   Mode block (`readmode`, hidden by default). Without it, delete that block from the layout.
-- `gitview` (optional) for the Changes panel. Without it, set the `changes` block's content to
-  `{ "mod": "changes" }` to use Herdr's own.
+- `better-files` (optional) for the Files panel and `gitview` (optional) for the Changes panel.
+  The tab bar hides the Files or Changes button when its mod isn't installed (and Sessions when
+  `agent-session` isn't). To use Herdr's own panels instead, set the `files` block's content to
+  `{ "mod": "files" }` and the `changes` block's to `{ "mod": "changes" }`.
 - `python3` for `agent-session`.
 
 ## Install

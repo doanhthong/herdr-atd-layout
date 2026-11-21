@@ -1,6 +1,6 @@
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, ScrollHandle } from "gpui-base";
-import { spaces, panes, run, openOverlay, theme, window, shared, layout, settings } from "herdr";
+import { spaces, panes, run, openOverlay, theme, window, shared, layout, settings, appHome, readTextFile } from "herdr";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -28,8 +28,11 @@ function label(tab, lead) {
 }
 
 export default class Tabs extends View {
-  init() {
+  init(_props, cx) {
     this.pressed = null;
+    // Mods the buttons open, by name: true installed, false missing, absent not checked yet.
+    this.mods = {};
+    cx.timer.every(30000, cx => this.checkMods(Object.keys(this.mods), cx));
     this.scroll = ScrollHandle.new();
     try { this.panels = JSON.parse(localStorage.getItem("panels") ?? "{}"); } catch { this.panels = {}; }
     if (!this.panels || typeof this.panels !== "object" || Array.isArray(this.panels)) this.panels = {};
@@ -57,6 +60,27 @@ export default class Tabs extends View {
     s.steps++;
     s.last = now;
     run(e.delta.y > 0 ? "tab.prev" : "tab.next");
+  }
+
+  // A button whose mod isn't installed is hidden: the layout names mods from
+  // other repos (better-files, gitview, agent-session) that may not be there.
+  checkMods(names, cx) {
+    if (!names.length) return;
+    cx.spawn(async cx => {
+      let changed = false;
+      for (const name of names) {
+        const ok = (await readTextFile(`${appHome()}/mods/${name}/mod.json`).catch(() => null)) != null;
+        if (this.mods[name] !== ok) { this.mods[name] = ok; changed = true; }
+      }
+      if (changed) cx.notify();
+    });
+  }
+
+  // Until checked, a mod counts as installed, so the buttons don't pop in.
+  hasMod(name, cx) {
+    if (!name) return true;
+    if (!(name in this.mods)) { this.mods[name] = undefined; this.checkMods([name], cx); }
+    return this.mods[name] !== false;
   }
 
   // The side panel is remembered per space: switching shows that space's choice
@@ -87,7 +111,7 @@ export default class Tabs extends View {
     localStorage.setItem("panels", JSON.stringify(this.panels));
   }
 
-  render() {
+  render(cx) {
     const t = theme();
     const space = spaces().find(p => p.active);
     const shown = space?.tabs ?? [];
@@ -129,7 +153,9 @@ export default class Tabs extends View {
       ? Math.max(10, (root.traffic_lights[0] + 64) / settings().zoom - (sidebar?.hidden ? 0 : sidebar?.size?.px ?? 0))
       : 10;
     const panel = find(root, "panel"), body = find(root, "panel-body");
-    const enabled = shared("workspace.panels") ?? ["files", "changes"];
+    const enabled = (shared("workspace.panels") ?? ["files", "changes"])
+      .filter(id => this.hasMod(find(body, id)?.content?.mod, cx));
+    const sessions = this.hasMod("agent-session", cx);
     this.syncPanel(space, panel, body, enabled);
     const panelButton = (id, label, icon) => {
       const on = panel && !panel.hidden && body?.active === id;
@@ -150,10 +176,10 @@ export default class Tabs extends View {
       .child(button("tab-new", "+", () => openOverlay({ mod: "new-menu", kind: "popup", width: 250, height: 512 })))
       .when(enabled.includes("files"), el => el.child(panelButton("files", "Files", "mods/files/file.svg")))
       .when(enabled.includes("changes"), el => el.child(panelButton("changes", "Changes", "mods/changes/changes.svg")))
-      .child(h_flex().id("open-agent-session").h(26).px(8).gap(5).flex_none().items_center().rounded(6)
+      .when(sessions, el => el.child(h_flex().id("open-agent-session").h(26).px(8).gap(5).flex_none().items_center().rounded(6)
         .text_size(12).bg(t.chrome).text_color(t.muted).hover(s => s.bg(t.hover)).on_mouse_down("left", stop)
         .on_click(() => run("mod.open", { name: "agent-session" }))
-        .child(svg("mods/workspace-chrome/clock.svg").size(14)).child("Sessions"))
+        .child(svg("mods/workspace-chrome/clock.svg").size(14)).child("Sessions")))
       .when(w?.buttons, el => el.child(button("minimize", w.platform === "windows" ? svg("mods/atd-tabs/win-min.svg").size(16) : "−", () => run("window.minimize")))
         .child(button("maximize", w.platform === "windows" ? svg(`mods/atd-tabs/${w.maximized ? "win-restore" : "win-max"}.svg`).size(16) : "□", () => run("window.maximize")))
         .child(button("close-window", w.platform === "windows" ? svg("mods/atd-tabs/win-close.svg").size(16) : svg("mods/pane/close.svg").size(13), () => run("window.close"))));

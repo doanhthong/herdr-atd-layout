@@ -173,19 +173,14 @@
                       "id": "files",
                       "type": "block",
                       "content": {
-                        "mod": "files"
+                        "mod": "better-files"
                       }
                     },
                     {
                       "id": "changes",
                       "type": "block",
                       "content": {
-                        "mod": "gitview",
-                        "props": {
-                          "replaces": {
-                            "mod": "changes"
-                          }
-                        }
+                        "mod": "gitview"
                       }
                     }
                   ]
